@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1541754185738.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "1339289879",
+    "id" : "C7CE2531",
+    "lastKnownWriteTime" : 1541754332,
+    "last_content_update" : 1541754332882,
+    "path" : "~/Courses/AI/2018/Projects/late assignments 3/Group 23/P3.R",
+    "project_path" : null,
+    "properties" : {
+        "cursorPosition" : "106,50",
+        "scrollLine" : "97"
+    },
+    "relative_order" : 3,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

@@ -1,0 +1,649 @@
+testDiagnostics=function(learn,diagnose,dataSeed=NA,samplingSeed=NA){
+  if (is.na(dataSeed))
+    dataSeed=sample(1:10000,1)
+  if (is.na(samplingSeed))
+    samplingSeed=sample(1:10000,1)
+
+  startTime=Sys.time()
+  network=learn(Diagnostics::hist)
+  cases=getEvaluationCases(seed = dataSeed)
+  set.seed(samplingSeed)
+  estimates=diagnose(network,cases)
+  ground_truth_probabilities=SolveCasesAnalytically(getEvaluationCases(seed = dataSeed,df=F))
+  mae=Diagnostics:::compareEstimates(estimates,ground_truth_probabilities)
+  endTime=Sys.time()
+  timeTaken=as.numeric(endTime)-as.numeric(startTime)
+  c(mae,timeTaken)
+}
+
+testDiagnosticsOverMultipleSeeds=function(n,studentLearn,studentDiagnose){
+  for (i in 1:10) {
+    s=sample(10000,1)
+    cat ("\nSeed:",s)
+    r=testDiagnostics(bnLearn,bnDiagnose,s,s)
+    cat("\nPar:",r[1])
+    r=testDiagnostics(studentLearn,studentDiagnose,s,s)
+    cat("\nStudent:",r[1])
+  }
+}
+
+# Pnuemonia [T,F] -> X_Ray, Temperature
+# Temperature [Normal]
+
+# Visited_TB_Spot [T,F] -> Tuberculosis
+# Tuberculosis [T,F] -> X_Ray
+#
+# Smokes [T,F] -> Lung_Cancer, Bronchitis
+# Lung_Cancer [T,F] -> X_Ray, Dyspnea
+# Bronchitis [T,F] -> Dyspnea
+#
+# X_Ray : [T,F]
+# Dyspnea (Shortness of Breath): [T,F]
+bnLearn=function(historical_cases){
+  out=list(
+    Pnuemonia=Make_Binary_Distribution(1,historical_cases),
+    Temperature=Make_Conditional_Normal_Distribution(2,1,historical_cases,.2),
+    Visited_TBS=Make_Binary_Distribution(3,historical_cases),
+    Tuberculosis=Make_Conditional_Binary_Distribution(4,3,historical_cases),
+    Smokes=Make_Binary_Distribution(5,historical_cases),
+    Lung_Cancer=Make_Conditional_Binary_Distribution(6,5,historical_cases),
+    Bronchitis=Make_Conditional_Binary_Distribution(7,5,historical_cases),
+    X_Ray=Make_Conditional_Binary_Distribution(8,c(1,4,6),historical_cases),
+    Dyspnea=Make_Conditional_Binary_Distribution(9,c(6,7),historical_cases)
+  )
+  class(out)="Network"
+  return(out)
+}
+bnDiagnose=function(network,cases,n=1000) {
+  diagnoses=NULL
+  for (i in 1:nrow(cases)){
+    case_probs=predict(network,cases[i,],n)
+    diagnoses=rbind(diagnoses,case_probs)
+  }
+  colnames(diagnoses)=colnames(cases)[c(1,4,6,7)]
+  rownames(diagnoses)=rownames(cases)
+  return(diagnoses)
+}
+getEvaluationCases=function(n=10,seed=NA,df=T) {
+  if (!is.na(seed))
+    set.seed(seed)
+  out=Generate_Ground_Truth(n)
+  out[,c(1,4,6,7)]=NA
+  colnames(out)=c("Pn", "Te","VTB", "TB", "Sm", "LC", "Br", "XR", "Dy")
+  rownames(out)=1:n
+  if (df)
+    out=data.frame(out)
+  return(out)
+}
+
+
+
+predict=function(network,case,n=1000,burn=n/10) {
+  missing=which(is.na(case))
+  sample1=RandomInit(network,case)
+  samples=matrix(rep(NA,length(sample1)*(n+burn)),ncol=length(sample1))
+  samples[1,]=as.numeric(sample1)
+  for (i in 2:burn){
+    samples[i,]=makeNewSample(network,missing,samples[i-1,])
+  }
+  for (i in (burn+1):(burn+n)){
+    samples[i,]=makeNewSample(network,missing,samples[i-1,])
+  }
+  samples=samples[(burn+1):(burn+n),]
+  # Return just probabilities for illnesses
+  colMeans(samples[,c(1,4,6,7)])
+}
+makeNewSample=function(network,missing,old_sample){
+  new_sample=old_sample
+  for (i in missing) {
+    new_sample[i]=Proposal(network[[i]],old_sample)
+    pOld=Probability(network,old_sample)
+    pNew=Probability(network,new_sample)
+
+    if (runif(1)<pNew/pOld) {
+      old_sample=new_sample
+    }
+    else {
+      new_sample=old_sample
+    }
+  }
+  return (old_sample)
+}
+
+Make_Binary_Distribution=function(index,data){
+  column=data[,index]
+  Binary_Distribution(index,1+length(which(column==0)),1+length(which(column==1)))
+}
+Increase_Row_Counter=function(counter){
+  for (i in length(counter):1) {
+    if (counter[i]==0) {
+      counter[i]=1
+      return (counter)
+    }
+    else
+      counter[i]=0
+  }
+  return(counter)
+}
+Make_Conditional_Binary_Distribution=function(index,parent_indices,data){
+  column=data[,index]
+  parent_columns=data[,parent_indices,drop=F]
+
+  parents=ncol(parent_columns)
+  rows=2^parents
+  p_values=rep(0,parents)
+  params_matrix=matrix(rep(0,2*rows),nrow=rows)
+  for (i in 1:rows) {
+    indices=1:nrow(parent_columns)
+    for (j in 1:length(p_values)) {
+      indices=intersect(indices,which(parent_columns[,j]==p_values[j]))
+    }
+    params_matrix[i,1]=1+length(which(column[indices]==0))
+    params_matrix[i,2]=1+length(which(column[indices]==1))
+    p_values=Increase_Row_Counter(p_values)
+  }
+  Conditional_Binary_Distribution(index,parent_indices,params_matrix)
+}
+Make_Normal_Distribution=function(index,data,proposal_sd=.2){
+  column=data[,index]
+  Normal_Distribution(index,column,proposal_sd)
+}
+Make_Conditional_Normal_Distribution=function(index,parent_indices,data,proposal_sd=.2){
+  column=data[,index]
+  parent_columns=data[,parent_indices,drop=F]
+
+  parents=ncol(parent_columns)
+  rows=2^parents
+  p_values=rep(0,parents)
+  values_list=list()
+  for (i in 1:rows) {
+    indices=1:nrow(parent_columns)
+    for (j in 1:length(p_values)) {
+      indices=intersect(indices,which(parent_columns[,j]==p_values[j]))
+    }
+    values_list[[i]]=column[indices]
+    p_values=Increase_Row_Counter(p_values)
+  }
+  Conditional_Normal_Distribution(index,parent_indices,values_list,proposal_sd)
+}
+
+
+Binary_Distribution=function(index,d0=1,d1=1) {
+  out=list(d0=d0,d1=d1,index=index)
+  class(out)="Binary_Distribution"
+  return (out)
+}
+Conditional_Binary_Distribution=function(index,parent_indices,params_matrix){
+  # Parents assumed binary
+  rows=2^length(parent_indices)
+  rowDists=lapply(1:rows,function(i)Binary_Distribution(index,params_matrix[i,1],params_matrix[i,2]))
+  out=list(rows=rowDists,index=index,parent_indices=parent_indices)
+  class(out)="Conditional_Binary_Distribution"
+  return (out)
+}
+Normal_Distribution=function(index,values,proposal_sd){
+  out=list(values=values,index=index,range=c(min(values),max(values)),proposal_sd=proposal_sd)
+  class(out)="Normal_Distribution"
+  return(out)
+}
+Conditional_Normal_Distribution=function(index,parent_indices,values_list,proposal_sd){
+  values=unlist(values_list)
+  # Parents assumed binary
+  rows=2^length(parent_indices)
+  rowDists=lapply(1:rows,function(i)Normal_Distribution(index,values_list[[i]],proposal_sd))
+  out=list(rows=rowDists,index=index,parent_indices=parent_indices,range=c(min(values),max(values)),proposal_sd=proposal_sd)
+  class(out)="Conditional_Normal_Distribution"
+  return (out)
+}
+
+
+
+
+RandomInit=function(obj,...) {
+  UseMethod("RandomInit",obj)
+}
+RandomInit.Binary_Distribution=function(obj) {
+  sample(c(0,1),1)
+}
+RandomInit.Conditional_Binary_Distribution=function(obj) {
+  sample(c(0,1),1)
+}
+RandomInit.Normal_Distribution=function(obj) {
+  runif(1,obj$range[0],obj$range[1])
+}
+RandomInit.Conditional_Normal_Distribution=function(obj) {
+  runif(1,obj$range[0],obj$range[1])
+}
+RandomInit.Network=function(obj,case){
+  for (i in 1:length(obj)) {
+    if (is.na(case[i])) {
+      case[i]=RandomInit(obj[[i]])
+    }
+  }
+  return(case)
+}
+
+Proposal=function(obj,...){
+  UseMethod("Proposal",obj)
+}
+Proposal.Binary_Distribution=function(obj,case) {
+  if (case[obj$index]==0)
+    return (1)
+  else
+    return (0)
+}
+Proposal.Conditional_Binary_Distribution=function(obj,case) {
+  if (case[obj$index]==0)
+    return (1)
+  else
+    return (0)
+}
+Proposal.Normal_Distribution=function(obj) {
+  case[obj$index]+rnorm(1,0,obj$proposal_sd)
+}
+Proposal.Conditional_Normal_Distribution=function(obj,case) {
+  case[obj$index]+rnorm(1,0,obj$proposal_sd)
+}
+
+Update=function(obj,...) {
+  UseMethod("Sample",obj)
+}
+Update.Binary_Distribution=function(obj,case) {
+  v=case[obj$index]
+  if (v==0)
+    obj$d0=obj$d0+1
+  else if (v==1)
+    obj$d0=obj$d1+1
+  else
+    stop("Invalid value.")
+  return (obj)
+}
+Get_Parent_Row=function(parents){
+  row=1
+  for (i in length(parents):1){
+    if (parents[i]==1)
+      row=row*2
+  }
+  return (row)
+}
+Update.Conditional_Binary_Distribution=function(obj,case) {
+  parents=case[obj$parent_indices]
+  row=Get_Parent_Row(parents)
+  obj$rows[[row]]=Update(obj$rows[[row]],case)
+  return (obj)
+}
+Update.Normal_Distribution=function(obj,case) {
+  v=case[obj$index]
+  obj$values=c(obj$values,v)
+  return (obj)
+}
+Update.Conditional_Normal_Distribution=function(obj,case) {
+  parents=case[obj$parent_indices]
+  row=Get_Parent_Row(parents)
+  obj$rows[[row]]=Update(obj$rows[[row]],case)
+  return (obj)
+}
+Update.Network=function(obj,case){
+  for (i in 1:length(obj))
+    obj[[i]]=Update(obj[[i]],case)
+  return(obj)
+}
+
+Sample=function(obj,...) {
+  UseMethod("Sample",obj)
+}
+Sample.Binary_Distribution=function(obj,case,n=1) {
+  p=obj$d1/(obj$d1+obj$d0)
+  sample(0:1,n,T,c(1-p,p))
+}
+Sample.Conditional_Binary_Distribution=function(obj,case,n=1) {
+  parents=case[obj$parent_indices]
+  row=Get_Parent_Row(parents)
+  Sample(obj$rows[[row]],case,n)
+}
+Sample.Normal_Distribution=function(obj,case,n=1){
+  rnorm(n,mean(obj$values),sd(obj$values))
+}
+Sample.Conditional_Normal_Distribution=function(obj,case,n=1) {
+  parents=case[obj$parent_indices]
+  row=Get_Parent_Row(parents)
+  Sample(obj$rows[[row]],case,n)
+}
+
+Probability=function(obj,...){
+  UseMethod("Probability",obj)
+}
+Probability.Binary_Distribution=function(obj,case) {
+  v=case[obj$index]
+  if (v==0)
+    return (obj$d0/(obj$d1+obj$d0))
+  else if (v==1)
+    return (obj$d1/(obj$d1+obj$d0))
+  else
+    stop("Invalid value.")
+}
+Probability.Conditional_Binary_Distribution=function(obj,case) {
+  parents=case[obj$parent_indices]
+  row=Get_Parent_Row(parents)
+  Probability(obj$rows[[row]],case)
+}
+Probability.Normal_Distribution=function(obj,case){
+  v=case[obj$index]
+  out=dnorm(v,mean(obj$values),sd(obj$values))
+  return(out)
+}
+Probability.Conditional_Normal_Distribution=function(obj,case) {
+  parents=case[obj$parent_indices]
+  row=Get_Parent_Row(parents)
+  Probability(obj$rows[[row]],case)
+}
+Probability.Network=function(obj,case) {
+  probs=sapply(obj,function(node)Probability(node,case))
+  prod(probs)
+}
+
+
+Binary_Distribution2=function(index,p) {
+  out=list(p=p,index=index)
+  class(out)="Binary_Distribution2"
+  return (out)
+}
+Conditional_Binary_Distribution2=function(index,parent_indices,params){
+  # Parents assumed binary
+  rows=2^length(parent_indices)
+  rowDists=lapply(1:rows,function(i)Binary_Distribution2(index,params[i]))
+  out=list(rows=rowDists,index=index,parent_indices=parent_indices)
+  class(out)="Conditional_Binary_Distribution2"
+  return (out)
+}
+Normal_Distribution2=function(index,mean,sd){
+  out=list(mean=mean,sd=sd,index=index)
+  class(out)="Normal_Distribution2"
+  return(out)
+}
+Conditional_Normal_Distribution2=function(index,parent_indices,means,sds){
+  # Parents assumed binary
+  rows=2^length(parent_indices)
+  rowDists=lapply(1:rows,function(i)Normal_Distribution2(index,means[i],sds[i]))
+  out=list(rows=rowDists,index=index,parent_indices=parent_indices)
+  class(out)="Conditional_Normal_Distribution2"
+  return (out)
+}
+Sample.Binary_Distribution2=function(obj,case,n=1) {
+  p=obj$p
+  sample(0:1,n,T,c(1-p,p))
+}
+Sample.Conditional_Binary_Distribution2=function(obj,case,n=1) {
+  parents=case[obj$parent_indices]
+  row=Get_Parent_Row(parents)
+  Sample(obj$rows[[row]],case,n)
+}
+Sample.Normal_Distribution2=function(obj,case,n=1){
+  rnorm(n,obj$mean,obj$sd)
+}
+Sample.Conditional_Normal_Distribution2=function(obj,case,n=1) {
+  parents=case[obj$parent_indices]
+  row=Get_Parent_Row(parents)
+  Sample(obj$rows[[row]],case,n)
+}
+
+
+Generate_Ground_Truth=function(n=10000){
+  net=list(
+    Pnuemonia=Binary_Distribution2(1,.1),
+    Temperature=Conditional_Normal_Distribution2(2,1,c(39,41),c(.25,.5)),
+    Visited_TBS=Binary_Distribution2(3,.05),
+    Tuberculosis=Conditional_Binary_Distribution2(4,3,c(.01,.4)),
+    Smokes=Binary_Distribution2(5,.35),
+    Lung_Cancer=Conditional_Binary_Distribution2(6,5,c(.01,.25)),
+    Bronchitis=Conditional_Binary_Distribution2(7,5,c(.04,.25)),
+    #                                                       ( - , C , T , CT, P ,PC,PT,PCT)
+    X_Ray=Conditional_Binary_Distribution2(8,c(1,4,6),c(.01,.85,.75,.95,.55,.9,.8,.99)),
+    #                                                  ( - , B , C ,BC)
+    Dyspnea=Conditional_Binary_Distribution2(9,c(6,7),c(.05,.35,.25,.65))
+  )
+  out=NULL
+  for (i in 1:n) {
+    sample=rep(NA,9)
+
+    sample[1]=Sample(net[[1]],sample)
+    sample[2]=Sample(net[[2]],sample)
+    sample[3]=Sample(net[[3]],sample)
+    sample[4]=Sample(net[[4]],sample)
+    sample[5]=Sample(net[[5]],sample)
+    sample[6]=Sample(net[[6]],sample)
+    sample[7]=Sample(net[[7]],sample)
+    sample[8]=Sample(net[[8]],sample)
+    sample[9]=Sample(net[[9]],sample)
+
+    out=rbind(out,sample)
+  }
+  colnames(out)=c("Pn", "Te","VTB", "TB", "Sm", "LC", "Br", "XR", "Dy")
+  rownames(out)=1:n
+  return (out)
+}
+
+makeCases=function(true=F){
+  # Pn, Te,   VTB, TB, Sm, LC, Br, XR, Dy
+  out=matrix(
+    c(0, 38.73447, 0,  0,  1,  1,  0,  1,  0, # Smoker with cancer
+      1, 41.18788, 0,  0,  0,  0,  0,  1,  0, # Pneumonia with temperature
+      0, 39.23329, 1,  1,  1,  0,  0,  1,  0, # TB with visit to TBH (and smokes)
+      0, 39.16066, 1,  1,  1,  0,  0,  0,  0,
+      0, 39.13593, 0,  0,  0,  1,  0,  1,  0,
+      0, 38.64055, 0,  0,  1,  1,  1,  1,  1,
+      1, 40.61668, 0,  0,  0,  0,  0,  0,  0,
+      0, 38.95874, 0,  0,  0,  0,  0,  0,  0,
+      0, 38.65676, 0,  0,  1,  0,  0,  0,  0,
+      1, 40.70658, 1,  1,  1,  1,  0,  1,  1),nrow=10,byrow=T)
+  colnames(out)=c("Pn", "Te","VTB", "TB", "Sm", "LC", "Br", "XR", "Dy")
+  rownames(out)=1:10
+  if (true)
+    return(out[,c(1,4,6,7)])
+
+  out[,1]=NA
+  out[,4]=NA
+  out[,6]=NA
+  out[,7]=NA
+  return(out)
+}
+SolveCasesAnalytically=function(cases,hist_data=NA,bayes_cor=T){
+  v1_1_p=.1
+  v2_1_m=39
+  v2_1_s=.25
+  v2_2_m=41
+  v2_2_s=.5
+  v3_1_p=.05
+  v4_1_p=.01
+  v4_2_p=.4
+  v5_1_p=.35
+  v6_1_p=.01
+  v6_2_p=.25
+  v7_1_p=.04
+  v7_2_p=.25
+  v8_1_p=.01
+  v8_2_p=.85
+  v8_3_p=.75
+  v8_4_p=.95
+  v8_5_p=.55
+  v8_6_p=.9
+  v8_7_p=.8
+  v8_8_p=.99
+  v9_1_p=.05
+  v9_2_p=.35
+  v9_3_p=.25
+  v9_4_p=.65
+
+  if(!is.na(hist_data)) {
+    bc=0
+    if (bayes_cor)
+      bc=1
+    total_rows=nrow(hist_data)+2*bc
+
+    v1_1_p=(length(which(hist_data[,1]==1))+bc)/total_rows
+    v2_1_m=mean(hist_data[which(hist_data[,1]==0),2])
+    v2_1_s=sd(hist_data[which(hist_data[,1]==0),2])
+    v2_2_m=mean(hist_data[which(hist_data[,1]==1),2])
+    v2_2_s=sd(hist_data[which(hist_data[,1]==1),2])
+    v3_1_p=(length(which(hist_data[,3]==1))+bc)/total_rows
+    v4_1_p=(length(which(hist_data[,3]==0 & hist_data[,4]==1))+bc) / (length(which(hist_data[,3]==0))+2*bc)
+    v4_2_p=(length(which(hist_data[,3]==1 & hist_data[,4]==1))+bc) / (length(which(hist_data[,3]==1))+2*bc)
+    v5_1_p=(length(which(hist_data[,5]==1))+bc)/total_rows
+    v6_1_p=(length(which(hist_data[,5]==0 & hist_data[,6]==1))+bc) / (length(which(hist_data[,5]==0))+2*bc)
+    v6_2_p=(length(which(hist_data[,5]==1 & hist_data[,6]==1))+bc) / (length(which(hist_data[,5]==1))+2*bc)
+    v7_1_p=(length(which(hist_data[,5]==0 & hist_data[,7]==1))+bc) / (length(which(hist_data[,5]==0))+2*bc)
+    v7_2_p=(length(which(hist_data[,5]==1 & hist_data[,7]==1))+bc) / (length(which(hist_data[,5]==1))+2*bc)
+    v8_1_p=(length(which(hist_data[,8]==1 & hist_data[,1]==0 & hist_data[,4]==0 & hist_data[,6]==0))+bc) /
+      (length(which(hist_data[,1]==0 & hist_data[,4]==0 & hist_data[,6]==0))+2*bc)
+    v8_2_p=(length(which(hist_data[,8]==1 & hist_data[,1]==0 & hist_data[,4]==0 & hist_data[,6]==1))+bc) /
+      (length(which(hist_data[,1]==0 & hist_data[,4]==0 & hist_data[,6]==1))+2*bc)
+    v8_3_p=(length(which(hist_data[,8]==1 & hist_data[,1]==0 & hist_data[,4]==1 & hist_data[,6]==0))+bc) /
+      (length(which(hist_data[,1]==0 & hist_data[,4]==1 & hist_data[,6]==0))+2*bc)
+    v8_4_p=(length(which(hist_data[,8]==1 & hist_data[,1]==0 & hist_data[,4]==1 & hist_data[,6]==1))+bc) /
+      (length(which(hist_data[,1]==0 & hist_data[,4]==1 & hist_data[,6]==1))+2*bc)
+    v8_5_p=(length(which(hist_data[,8]==1 & hist_data[,1]==1 & hist_data[,4]==0 & hist_data[,6]==0))+bc) /
+      (length(which(hist_data[,1]==1 & hist_data[,4]==0 & hist_data[,6]==0))+2*bc)
+    v8_6_p=(length(which(hist_data[,8]==1 & hist_data[,1]==1 & hist_data[,4]==0 & hist_data[,6]==1))+bc) /
+      (length(which(hist_data[,1]==1 & hist_data[,4]==0 & hist_data[,6]==1))+2*bc)
+    v8_7_p=(length(which(hist_data[,8]==1 & hist_data[,1]==1 & hist_data[,4]==1 & hist_data[,6]==0))+bc) /
+      (length(which(hist_data[,1]==1 & hist_data[,4]==1 & hist_data[,6]==0))+2*bc)
+    v8_8_p=(length(which(hist_data[,8]==1 & hist_data[,1]==1 & hist_data[,4]==1 & hist_data[,6]==1))+bc) /
+      (length(which(hist_data[,1]==1 & hist_data[,4]==1 & hist_data[,6]==1))+2*bc)
+    v9_1_p=(length(which(hist_data[,9]==1 & hist_data[,6]==0 & hist_data[,7]==0))+bc) /
+      (length(which(hist_data[,6]==0 & hist_data[,7]==0))+2*bc)
+    v9_2_p=(length(which(hist_data[,9]==1 & hist_data[,6]==0 & hist_data[,7]==1))+bc) /
+      (length(which(hist_data[,6]==0 & hist_data[,7]==1))+2*bc)
+    v9_3_p=(length(which(hist_data[,9]==1 & hist_data[,6]==1 & hist_data[,7]==0))+bc) /
+      (length(which(hist_data[,6]==1 & hist_data[,7]==0))+2*bc)
+    v9_4_p=(length(which(hist_data[,9]==1 & hist_data[,6]==1 & hist_data[,7]==1))+bc) /
+      (length(which(hist_data[,6]==1 & hist_data[,7]==1))+2*bc)
+  }
+
+  #    1 2 3 4 5 6 7 8 9
+  rows=2*1*1*2*1*2*2*1*1
+
+  v1_0_rows=1:(rows/2)
+  v1_1_rows=(1+(rows/2)):rows
+  #V2 uses V1 rows
+  #v3 constant
+  v4_0_rows=which(sapply(1:rows,function(i)ifelse(((i-1)%/%4)%%2==0,T,F)))
+  v4_1_rows=which(sapply(1:rows,function(i)ifelse((((i-1)%/%4)-1)%%2==0,T,F)))
+  #V5 constant
+  v6_0_rows=which(sapply(1:rows,function(i)ifelse((i-1)%%4==0 || (i-2)%%4==0,T,F)))
+  v6_1_rows=which(sapply(1:rows,function(i)ifelse((i-3)%%4==0 || (i-4)%%4==0,T,F)))
+  v7_0_rows=which(sapply(1:rows,function(i)ifelse((i-1)%%2==0,T,F)))
+  v7_1_rows=which(sapply(1:rows,function(i)ifelse((i-2)%%2==0,T,F)))
+  #V8 constant
+  #V9 constant
+
+  m=matrix(rep(NA,rows*9),nrow=rows)
+  out=matrix(rep(NA,4*nrow(cases)),nrow=nrow(cases))
+  for (i in 1:nrow(cases)) {
+    case=cases[i,]
+
+    #V1 Pn
+    m[v1_0_rows,1]=1-v1_1_p
+    m[v1_1_rows,1]=v1_1_p
+
+    #V2 Te
+    v20=dnorm(case[2],v2_1_m,v2_1_s)
+    v21=dnorm(case[2],v2_2_m,v2_2_s)
+    m[v1_0_rows,2]=v20/(v20+v21)
+    m[v1_1_rows,2]=v21/(v20+v21)
+
+    #V3 TBH
+    # Is the same for all, so ignore
+    m[,3]=1
+
+    #V4 TB
+    if (case[3]==0){
+      m[v4_0_rows,4]=1-v4_1_p
+      m[v4_1_rows,4]=v4_1_p
+    }
+    else {
+      m[v4_0_rows,4]=1-v4_2_p
+      m[v4_1_rows,4]=v4_2_p
+    }
+
+    #V5 Sm
+    # Is the same for all, so ignore
+    m[,5]=1
+
+    #V6 LC
+    if (case[5]==0){
+      m[v6_0_rows,6]=1-v6_1_p
+      m[v6_1_rows,6]=v6_1_p
+    }
+    else{
+      m[v6_0_rows,6]=1-v6_2_p
+      m[v6_1_rows,6]=v6_2_p
+    }
+    #V7 Br
+    if (case[5]==0){
+      m[v7_0_rows,7]=1-v7_1_p
+      m[v7_1_rows,7]=v7_1_p
+    }
+    else{
+      m[v7_0_rows,7]=1-v7_2_p
+      m[v7_1_rows,7]=v7_2_p
+    }
+    #V8 XR
+    if (case[8]==0){
+      m[intersect(v1_0_rows,intersect(v4_0_rows,v6_0_rows)),8]=1-v8_1_p
+      m[intersect(v1_0_rows,intersect(v4_0_rows,v6_1_rows)),8]=1-v8_2_p
+      m[intersect(v1_0_rows,intersect(v4_1_rows,v6_0_rows)),8]=1-v8_3_p
+      m[intersect(v1_0_rows,intersect(v4_1_rows,v6_1_rows)),8]=1-v8_4_p
+      m[intersect(v1_1_rows,intersect(v4_0_rows,v6_0_rows)),8]=1-v8_5_p
+      m[intersect(v1_1_rows,intersect(v4_0_rows,v6_1_rows)),8]=1-v8_6_p
+      m[intersect(v1_1_rows,intersect(v4_1_rows,v6_0_rows)),8]=1-v8_7_p
+      m[intersect(v1_1_rows,intersect(v4_1_rows,v6_1_rows)),8]=1-v8_8_p
+    }
+    else{
+      m[intersect(v1_0_rows,intersect(v4_0_rows,v6_0_rows)),8]=v8_1_p
+      m[intersect(v1_0_rows,intersect(v4_0_rows,v6_1_rows)),8]=v8_2_p
+      m[intersect(v1_0_rows,intersect(v4_1_rows,v6_0_rows)),8]=v8_3_p
+      m[intersect(v1_0_rows,intersect(v4_1_rows,v6_1_rows)),8]=v8_4_p
+      m[intersect(v1_1_rows,intersect(v4_0_rows,v6_0_rows)),8]=v8_5_p
+      m[intersect(v1_1_rows,intersect(v4_0_rows,v6_1_rows)),8]=v8_6_p
+      m[intersect(v1_1_rows,intersect(v4_1_rows,v6_0_rows)),8]=v8_7_p
+      m[intersect(v1_1_rows,intersect(v4_1_rows,v6_1_rows)),8]=v8_8_p
+    }
+
+
+    #V9 Dy
+    if (case[9]==0) {
+      m[intersect(v6_0_rows,v7_0_rows),9]=1-v9_1_p
+      m[intersect(v6_0_rows,v7_1_rows),9]=1-v9_2_p
+      m[intersect(v6_1_rows,v7_0_rows),9]=1-v9_3_p
+      m[intersect(v6_1_rows,v7_1_rows),9]=1-v9_4_p
+    }
+    else {
+      m[intersect(v6_0_rows,v7_0_rows),9]=v9_1_p
+      m[intersect(v6_0_rows,v7_1_rows),9]=v9_2_p
+      m[intersect(v6_1_rows,v7_0_rows),9]=v9_3_p
+      m[intersect(v6_1_rows,v7_1_rows),9]=v9_4_p
+    }
+
+    probs=apply(m,1,prod)
+
+    denom=sum(probs)
+    out[i,1]=sum(probs[v1_1_rows])/denom
+    out[i,2]=sum(probs[v4_1_rows])/denom
+    out[i,3]=sum(probs[v6_1_rows])/denom
+    out[i,4]=sum(probs[v7_1_rows])/denom
+  }
+  return (out)
+  # Case1:
+  #Pn=0
+  #dnorm(1,v2_1_m,v2_1_s)*
+  #Pn=1
+  #dnorm(1,v2_2_m,v2_2_s)*
+  #   c(0, 38.73447, 0,  0,  1,  1,  0,  1,  0, # Smoker with cancer
+
+  #    V1 V2 V3
+}
+ReadLine=function(){
+  a=readline()
+  if (a=="q")
+    stop()
+}

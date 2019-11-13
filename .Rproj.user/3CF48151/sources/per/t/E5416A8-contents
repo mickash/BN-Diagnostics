@@ -1,0 +1,362 @@
+library(Diagnostics)
+learn = function(hist){
+  #df=data.frame(data(hist))
+  total=10000
+
+  # matrix of Pn probability
+  Pn=matrix(NA,nrow=1,ncol=2)
+  colnames(Pn)=c("0","1")
+  rownames(Pn)=c("Prob")
+  #print(Pn)
+  Pn[1,1]=nrow(subset(df, Pn=="0", select=c(Pn)))/total
+  Pn[1,2]=nrow(subset(df, Pn=="1", select=c(Pn)))/total
+  #print(Pn)
+
+  # matrix of VTB probability
+  VTB=matrix(NA,nrow=1,ncol=2)
+  colnames(VTB)<-c("0","1")
+  rownames(VTB)<-c("Prob")
+  VTB[1,1]=nrow(subset(df, VTB=="0", select=c(VTB)))/total
+  VTB[1,2]=nrow(subset(df, VTB=="1", select=c(VTB)))/total
+  #print(VTB)
+
+  # matrix of Sm probability
+  Sm=matrix(NA,nrow=1,ncol=2)
+  colnames(Sm)<-c("0","1")
+  rownames(Sm)<-c("Prob")
+  Sm[1,1]=nrow(subset(df, Sm=="0", select=c(Sm)))/total
+  Sm[1,2]=nrow(subset(df, Sm=="1", select=c(Sm)))/total
+  #print(Sm)
+
+  # matrix of Pn|Te
+  PnTe=matrix(NA, nrow=2, ncol=2)
+  colnames(PnTe) <-c("Mean","SD")
+  rownames(PnTe) <-c("0","1")
+  PnTe[1,1]=colMeans(subset(df,Pn=="0", select=c(Te)))
+  PnTe[1,2]=apply(subset(df,Pn=="0", select=c(Te)), 2, sd)
+  PnTe[2,1]=colMeans(subset(df,Pn=="1", select=c(Te)))
+  PnTe[2,2]=apply(subset(df,Pn=="1", select=c(Te)), 2, sd)
+  #print(PnTe)
+
+  # matrix of Br|Sm
+  BrSm<-matrix(NA, nrow=2, ncol=2)
+  colnames(BrSm) <- c("0", "1")
+  rownames(BrSm) <- c("0", "1")
+
+  BrSm0=(nrow(subset(df, Sm=="0",select=c(Sm,Br))))+2 #Sm=0, Br
+  Br0Sm0=(nrow(subset(df, Sm=="0"&Br=="0",select=c(Sm,Br))))+1 #Sm=0,Br=0
+  Br1Sm0=(nrow(subset(df, Sm=="0"&Br=="1",select=c(Sm,Br))))+1 #Sm=0,Br=1
+  BrSm1=(nrow(subset(df, Sm=="1",select=c(Sm,Br))))+2 #Sm=0, Br
+  Br0Sm1=(nrow(subset(df, Sm=="1"&Br=="0",select=c(Sm,Br))))+1
+  Br1Sm1=(nrow(subset(df, Sm=="1"&Br=="1",select=c(Sm,Br))))+1
+
+  BrSm[1,1]=Br0Sm0/BrSm0
+  BrSm[1,2]=Br1Sm0/BrSm0
+  BrSm[2,1]=Br0Sm1/BrSm1
+  BrSm[2,2]=Br1Sm1/BrSm1
+  #print(BrSm)
+
+  # matrix of LC|Sm
+  LCSm<-matrix(NA, nrow=2, ncol=2)
+  colnames(LCSm) <-c("0", "1")
+  rownames(LCSm) <-c("0", "1")
+
+  LCSmSet=subset(df[, c("LC", "Sm")])
+  LCSm0=nrow(subset(LCSmSet,Sm=="0"))+2
+  LC0Sm0=nrow(subset(LCSmSet, LC=="0" & Sm=="0"))+1
+  LC1Sm0=nrow(subset(LCSmSet, LC=="1" & Sm=="0"))+1
+  LCSm1=nrow(subset(LCSmSet,Sm=="1"))+2
+  LC0Sm1=nrow(subset(LCSmSet, LC=="0" & Sm=="1"))+1
+  LC1Sm1=nrow(subset(LCSmSet, LC=="1" & Sm=="1"))+1
+
+  LCSm[1,1]<-LC0Sm0/LCSm0
+  LCSm[1,2]<-LC1Sm0/LCSm0
+  LCSm[2,1]<-LC0Sm1/LCSm1
+  LCSm[2,2]<-LC1Sm1/LCSm1
+  #print(LCSm)
+
+  # matrix of TB|VTB
+  TBVTB<-matrix(NA, nrow=2, ncol=2)
+  colnames(TBVTB)<-c("0","1")
+  rownames(TBVTB)<-c("0","1")
+
+  TBVTBSet<-subset(df[, c("TB", "VTB")])
+  TBVTB0<-nrow(subset(TBVTBSet,VTB=="0"))+2
+  TB0VTB0<-nrow(subset(TBVTBSet, TB=="0" & VTB=="0"))+1
+  TB1VTB0<-nrow(subset(TBVTBSet, TB=="1" & VTB=="0"))+1
+  TBVTB1<-nrow(subset(TBVTBSet,VTB=="1"))+2
+  TB0VTB1<-nrow(subset(TBVTBSet, TB=="0" & VTB=="1"))+1
+  TB1VTB1<-nrow(subset(TBVTBSet, TB=="1" & VTB=="1"))+1
+
+  TBVTB[1,1]<-TB0VTB0/TBVTB0
+  TBVTB[1,2]<-TB1VTB0/TBVTB0
+  TBVTB[2,1]<-TB0VTB1/TBVTB1
+  TBVTB[2,2]<-TB1VTB1/TBVTB1
+  #print(TBVTB)
+
+  # matrix of Dy|LC,Br
+  DyLCBr <-matrix(NA, nrow=4, ncol=4)
+  colnames(DyLCBr)<-c("LC","Br","0", "1")
+  DyLCBrSet<-subset(df[,c("Dy","LC","Br")])
+  DyLC0Br0<-nrow(subset(DyLCBrSet,LC=="0" & Br=="0"))+2
+  Dy0LC0Br0<-nrow(subset(DyLCBrSet,Dy=="0" & LC=="0" & Br=="0"))+1
+  Dy1LC0Br0<-nrow(subset(DyLCBrSet,Dy=="1" & LC=="0" & Br=="0"))+1
+
+  DyLC0Br1<-nrow(subset(DyLCBrSet,LC=="0" & Br=="1"))+2
+  Dy0LC0Br1<-nrow(subset(DyLCBrSet,Dy=="0" & LC=="0" & Br=="1"))+1
+  Dy1LC0Br1<-nrow(subset(DyLCBrSet,Dy=="1" & LC=="0" & Br=="1"))+1
+
+  DyLC1Br0<-nrow(subset(DyLCBrSet,LC=="1" & Br=="0"))+2
+  Dy0LC1Br0<-nrow(subset(DyLCBrSet,Dy=="0" & LC=="1" & Br=="0"))+1
+  Dy1LC1Br0<-nrow(subset(DyLCBrSet,Dy=="1" & LC=="1" & Br=="0"))+1
+
+  DyLC1Br1<-nrow(subset(DyLCBrSet,LC=="1" & Br=="1"))+2
+  Dy0LC1Br1<-nrow(subset(DyLCBrSet,Dy=="0" & LC=="1" & Br=="1"))+1
+  Dy1LC1Br1<-nrow(subset(DyLCBrSet,Dy=="1" & LC=="1" & Br=="1"))+1
+
+  DyLCBr[1,1]<-0
+  DyLCBr[1,2]<-0
+  DyLCBr[1,3]<-Dy0LC0Br0/DyLC0Br0
+  DyLCBr[1,4]<-Dy1LC0Br0/DyLC0Br0
+
+  DyLCBr[2,1]<-0
+  DyLCBr[2,2]<-1
+  DyLCBr[2,3]<-Dy0LC0Br1/DyLC0Br1
+  DyLCBr[2,4]<-Dy1LC0Br1/DyLC0Br1
+
+  DyLCBr[3,1]<-1
+  DyLCBr[3,2]<-0
+  DyLCBr[3,3]<-Dy0LC1Br0/DyLC1Br0
+  DyLCBr[3,4]<-Dy1LC1Br0/DyLC1Br0
+
+  DyLCBr[4,1]<-1
+  DyLCBr[4,2]<-1
+  DyLCBr[4,3]<-Dy0LC1Br1/DyLC1Br1
+  DyLCBr[4,4]<-Dy1LC1Br1/DyLC1Br1
+  #print(DyLCBr)
+
+  #matrix of XR|(Pn,TB, LC)
+  XRPnTBLC<-matrix(NA, nrow=8, ncol=5)
+  colnames(XRPnTBLC)<-c("Pn","TB","LC","0","1")
+
+  XRSet<-subset(df[,c("XR","Pn","TB","LC")])
+  XRPn0TB0LC0<-nrow(subset(XRSet,Pn=="0" & TB=="0" & LC=="0"))+2
+  XR0Pn0TB0LC0<-nrow(subset(XRSet,XR=="0" &Pn=="0" & TB=="0" & LC=="0"))+1
+  XR1Pn0TB0LC0<-nrow(subset(XRSet,XR=="1" &Pn=="0" & TB=="0" & LC=="0"))+1
+
+  XRPn0TB0LC1<-nrow(subset(XRSet,Pn=="0" & TB=="0" & LC=="1"))+2
+  XR0Pn0TB0LC1<-nrow(subset(XRSet,XR=="0" &Pn=="0" & TB=="0" & LC=="1"))+1
+  XR1Pn0TB0LC1<-nrow(subset(XRSet,XR=="1" &Pn=="0" & TB=="0" & LC=="1"))+1
+
+  XRPn0TB1LC0<-nrow(subset(XRSet,Pn=="0" & TB=="1" & LC=="0"))+2
+  XR0Pn0TB1LC0<-nrow(subset(XRSet,XR=="0" &Pn=="0" & TB=="1" & LC=="0"))+1
+  XR1Pn0TB1LC0<-nrow(subset(XRSet,XR=="1" &Pn=="0" & TB=="1" & LC=="0"))+1
+
+  XRPn0TB1LC1<-nrow(subset(XRSet,Pn=="0" & TB=="1" & LC=="1"))+2
+  XR0Pn0TB1LC1<-nrow(subset(XRSet,XR=="0" &Pn=="0" & TB=="1" & LC=="1"))+1
+  XR1Pn0TB1LC1<-nrow(subset(XRSet,XR=="1" &Pn=="0" & TB=="1" & LC=="1"))+1
+
+  XRPn1TB0LC0<-nrow(subset(XRSet,Pn=="1" & TB=="0" & LC=="0"))+2
+  XR0Pn1TB0LC0<-nrow(subset(XRSet,XR=="0" &Pn=="1" & TB=="0" & LC=="0"))+1
+  XR1Pn1TB0LC0<-nrow(subset(XRSet,XR=="1" &Pn=="1" & TB=="0" & LC=="0"))+1
+
+  XRPn1TB0LC1<-nrow(subset(XRSet,Pn=="1" & TB=="0" & LC=="0"))+2
+  XR0Pn1TB0LC1<-nrow(subset(XRSet,XR=="0" &Pn=="1" & TB=="0" & LC=="1"))+1
+  XR1Pn1TB0LC1<-nrow(subset(XRSet,XR=="1" &Pn=="1" & TB=="0" & LC=="1"))+1
+
+  XRPn1TB1LC0<-nrow(subset(XRSet,Pn=="1" & TB=="1" & LC=="0"))+2
+  XR0Pn1TB1LC0<-nrow(subset(XRSet,XR=="0" &Pn=="1" & TB=="1" & LC=="0"))+1
+  XR1Pn1TB1LC0<-nrow(subset(XRSet,XR=="1" &Pn=="1" & TB=="1" & LC=="0"))+1
+
+  XRPn1TB1LC1<-nrow(subset(XRSet,Pn=="1" & TB=="1" & LC=="1"))+2
+  XR0Pn1TB1LC1<-nrow(subset(XRSet,XR=="0" &Pn=="1" & TB=="1" & LC=="1"))+1
+  XR1Pn1TB1LC1<-nrow(subset(XRSet,XR=="1" &Pn=="1" & TB=="1" & LC=="1"))+1
+
+  #XR=0
+  XRPnTBLC[1,1]=0
+  XRPnTBLC[1,2]=0
+  XRPnTBLC[1,3]=0
+  XRPnTBLC[1,4]<-XR0Pn0TB0LC0/XRPn0TB0LC0
+  XRPnTBLC[1,5]<-XR1Pn0TB0LC0/XRPn0TB0LC0
+
+  XRPnTBLC[2,1]=0
+  XRPnTBLC[2,2]=0
+  XRPnTBLC[2,3]=1
+  XRPnTBLC[2,4]<-XR0Pn0TB0LC1/XRPn0TB0LC1
+  XRPnTBLC[2,5]<-XR1Pn0TB0LC1/XRPn0TB0LC1
+
+
+  XRPnTBLC[3,1]=0
+  XRPnTBLC[3,2]=1
+  XRPnTBLC[3,3]=0
+  XRPnTBLC[3,4]<-XR0Pn0TB1LC0/XRPn0TB1LC0
+  XRPnTBLC[3,5]<-XR1Pn0TB1LC0/XRPn0TB1LC0
+
+
+  XRPnTBLC[4,1]=0
+  XRPnTBLC[4,2]=1
+  XRPnTBLC[4,3]=1
+  XRPnTBLC[4,4]<-XR0Pn0TB1LC1/XRPn0TB1LC1
+  XRPnTBLC[4,5]<-XR1Pn0TB1LC1/XRPn0TB1LC1
+
+  XRPnTBLC[5,1]=1
+  XRPnTBLC[5,2]=0
+  XRPnTBLC[5,3]=0
+  XRPnTBLC[5,4]<-XR0Pn1TB0LC0/XRPn1TB0LC0
+  XRPnTBLC[5,5]<-XR1Pn1TB0LC0/XRPn1TB0LC0
+
+  XRPnTBLC[6,1]=1
+  XRPnTBLC[6,2]=0
+  XRPnTBLC[6,3]=1
+  XRPnTBLC[6,4]<-XR0Pn1TB0LC1/XRPn1TB0LC1
+  XRPnTBLC[6,5]<-XR1Pn1TB0LC1/XRPn1TB0LC1
+
+  XRPnTBLC[7,1]=1
+  XRPnTBLC[7,2]=1
+  XRPnTBLC[7,3]=0
+  XRPnTBLC[7,4]<-XR0Pn1TB1LC0/XRPn1TB1LC0
+  XRPnTBLC[7,5]<-XR1Pn1TB1LC0/XRPn1TB1LC0
+
+  XRPnTBLC[8,1]=1
+  XRPnTBLC[8,2]=1
+  XRPnTBLC[8,3]=1
+  XRPnTBLC[8,4]<-XR0Pn1TB1LC1/XRPn1TB1LC1
+  XRPnTBLC[8,5]<-XR1Pn1TB1LC1/XRPn1TB1LC1
+  #print(XRPnTBLC)
+
+  bayesian<-list(Pn,PnTe,VTB,TBVTB,Sm,LCSm,BrSm,XRPnTBLC,DyLCBr)
+  return(bayesian)
+}
+
+probcal=function(case){
+
+  probmat=matrix(NA, nrow=1, ncol=9)
+  colnames(probmat)=c("Pn","Te","VTB","TB","Sm","LC","Br","XR","Dy")
+
+  for (i in (1:1)){
+    eachcase=case[i,]
+    for(j in (1:9)){
+      eachvar=eachcase[j][1,1]
+
+      #Pn, VTB, Sm
+      if (j==1|j==3|j==5){
+        prob=bayesian[[j]][eachvar+1]
+        probmat[i,j]=prob}
+      #TE
+      else if (j==2){
+        prob=dnorm(eachvar, bayesian[[j]][1,1], bayesian[[j]][1,2])
+        probmat[i,j]=prob}
+      #TB, LC
+      else if (j==4|j==6){
+        prob=bayesian[[j]][eachcase[j-1][1,1]+1,eachvar+1]
+        probmat[i,j]=prob}
+      #Br
+      else if (j==7){
+        prob=bayesian[[j]][eachcase[j-2][1,1]+1,eachvar+1]
+        probmat[i,j]=prob}
+      #XR
+      else if (j==8){
+        new_mat=subset(bayesian[[j]], bayesian[[j]][, "Pn"]==eachcase[j-7][1,1]&
+                         bayesian[[j]][, "TB"]==eachcase[j-4][1,1]&
+                         bayesian[[j]][, "LC"]==eachcase[j-3][1,1])
+        prob=new_mat[eachvar+4]
+        probmat[i,j]=prob}
+      #DY
+      else {
+        new_mat=subset(bayesian[[j]], bayesian[[j]][, "LC"]==eachcase[j-3][1,1]&
+                         bayesian[[j]][, "Br"]==eachcase[j-2][1,1])
+        prob=new_mat[eachvar+3]
+        probmat[i,j]=prob}
+    }
+  }
+  return(probmat)}
+
+diagnose = function(bayesian,cases,nsamples=1000,burnin=100){
+  randoms = runif(nsamples * nrow(cases), min = 0, max = 1)
+  random_Index = 1
+
+  #define the shape of the output 10*4
+  output=matrix(NA, nrow(cases), 4)
+  colnames(output)=c("Pn", "TB","LC","Br")
+
+  #loop over each row in the cases and intialise the the unknow value
+  for (i in (1:nrow(cases))){
+    cases[i,1]=rbinom(1, 1, 0.5) #Pn
+    cases[i,4]=rbinom(1, 1, 0.5) #TB
+    cases[i,6]=rbinom(1, 1, 0.5) #LC
+    cases[i,7]=rbinom(1, 1, 0.5) #Br
+    samples=matrix(NA,nsamples,4)
+    colnames(samples)=c("Pn","TB","LC","Br")
+    sample_index=1
+
+    old_row=cases[i,]
+    while (sample_index<=nsamples){
+        new_row=old_row
+        old_pro=prod(probcal(old_row)[1,])
+
+        #update Pn
+        new_bin=abs(old_row[1,1]-1)
+        new_row[1,1]=new_bin
+        new_pro=prod(probcal(new_row)[1,])
+
+        if(old_pro<new_pro){
+          new_row[1,1]=new_bin}
+        else{
+          #randomvalue=randoms[random_index]
+          #random_Index+1
+          randomvalue=runif(1, min=0, max=1)
+          if((new_pro/old_pro > randomvalue)){new_row[1,1]=new_bin}
+          else{new_row[1,1]=old_row[1,1]}}
+
+        #update TB
+        new_bin=abs(old_row[1,4]-1)
+        new_row[1,4]=new_bin
+        new_pro=prod(probcal(new_row)[1,])
+
+        if(old_pro<new_pro){
+          new_row[1,4]=new_bin}
+        else{
+          #randomvalue=randoms[random_index]
+          #random_Index+1
+          randomvalue=runif(1, min=0, max=1)
+          if((new_pro/old_pro > randomvalue)){new_row[1,4]=new_bin}
+          else{new_row[1,4]=old_row[1,4]}}
+
+        #update LC
+        new_bin=abs(old_row[1,6]-1)
+        new_row[1,6]=new_bin #update the initial value
+        new_pro=prod(probcal(new_row)[1,])
+
+        if(old_pro<new_pro){
+          new_row[1,6]=new_bin}
+        else{
+          #randomvalue=randoms[random_index]
+          #random_Index+1
+          randomvalue=runif(1, min=0, max=1)
+          if((new_pro/old_pro > randomvalue)){new_row[1,6]=new_bin}
+          else{new_row[1,6]=old_row[1,6]}}
+
+        #update Br
+        new_bin=abs(old_row[1,7]-1)
+        new_row[1,7]=new_bin #update the initial value
+        new_pro=prod(probcal(new_row)[1,])
+
+        if(old_pro<new_pro){
+          new_row[1,7]=new_bin}
+        else{
+          #randomvalue=randoms[random_index]
+          #random_Index+1
+          randomvalue=runif(1, min=0, max=1)
+          if((new_pro/old_pro > randomvalue)){new_row[1,7]=new_bin}
+          else{new_row[1,7]=old_row[1,7]}
+        }
+
+        samples[sample_index,]=c(new_row[1,1],new_row[1,4],new_row[1,6],new_row[1,7])
+        sample_index=sample_index+1
+        old_row=new_row}
+
+    samples=samples[-c(1:burnin),]
+    output[i,]=colMeans(samples)}
+  return(output)}
+
+#runDiagnostics(learn, diagnose, verbose=2)

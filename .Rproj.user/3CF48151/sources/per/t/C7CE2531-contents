@@ -1,0 +1,156 @@
+#Ahmed Hussain, Group 23, Project 3
+library(Diagnostics)
+learn = function (hist){
+  pneumonia_probability = visited_TB_spot_probability = smoke_probability = matrix(0, 1, 2)
+  temperature_given_pneumonia_probability = TB_given_VTB_probability = lungCancer_given_smoke_probability =
+    bronchitis_given_smoke_probability = matrix(0, 2, 2)
+  dyspnea_given_lungcancer_and_bronchitis_probability = matrix(0, 4, 2)
+  xRay_given_lungcancer_and_tuberculosis_and_pneumonia_probability = matrix(0, 8 ,2)
+
+  pn_zero = (hist$Pn == 0)
+  vtb_zero = (hist$VTB == 0)
+  smoke_zero = (hist$Sm == 0)
+  bronchitis_zero = (hist$Br == 0)
+  lungcancer_zero = (hist$LC == 0)
+  tuberculosis_zero = (hist$TB == 0)
+
+  pn_one = !pn_zero
+  vtb_one = !vtb_zero
+  smoke_one = !smoke_zero
+  bronchitis_one = !bronchitis_zero
+  lungcancer_one = !lungcancer_zero
+  tuberculosis_one = !tuberculosis_zero
+
+  bl_one = (bronchitis_one & lungcancer_one)
+  bl_zero = (bronchitis_zero & lungcancer_zero)
+  b_one_l_zero = (bronchitis_one & lungcancer_zero)
+  b_zero_l_one = (bronchitis_zero & lungcancer_one)
+  ltp_zero = (lungcancer_zero & tuberculosis_zero & pn_zero)
+  l_one_tp_zero = (lungcancer_one & tuberculosis_zero & pn_zero)
+  lp_zero_t_one = (lungcancer_zero & tuberculosis_one & pn_zero)
+  lt_one_p_zero = (lungcancer_one & tuberculosis_one & pn_zero)
+  lt_zero_p_one = (lungcancer_zero & tuberculosis_zero & pn_one)
+  lp_one_t_zero = (lungcancer_one & tuberculosis_zero & pn_one)
+  pt_one_l_zero = (lungcancer_zero & tuberculosis_one & pn_one)
+  ltp_one = (lungcancer_one & tuberculosis_one & pn_one)
+
+  pneumonia_probability[1, 1] = 1 - sum(hist$Pn) / length(hist$Pn)
+  pneumonia_probability[1, 2] = 1 - pneumonia_probability[1, 1]
+
+  visited_TB_spot_probability[1, 1] = 1 - sum(hist$VTB) / length(hist$VTB)
+  visited_TB_spot_probability[1, 2] = 1 - visited_TB_spot_probability[1, 1]
+
+  smoke_probability[1, 1] = 1 - sum(hist$Sm) / length(hist$Sm)
+  smoke_probability[1, 2] = 1 - smoke_probability[1, 1]
+
+  temperature_given_pneumonia_probability[1, 1] = mean(hist$Te[pn_zero])
+  temperature_given_pneumonia_probability[1, 2] = sd(hist$Te[pn_zero])
+  temperature_given_pneumonia_probability[2, 1] = mean(hist$Te[pn_one])
+  temperature_given_pneumonia_probability[2, 2] = sd(hist$Te[pn_one])
+
+  TB_given_VTB_probability[1, 1] = 1 - sum(hist$TB[vtb_zero]) / length(hist$TB[vtb_zero])
+  TB_given_VTB_probability[1, 2] = 1 - TB_given_VTB_probability[1, 1]
+  TB_given_VTB_probability[2, 1] = 1 - sum(hist$TB[vtb_one]) / length(hist$TB[vtb_one])
+  TB_given_VTB_probability[2, 2] = 1 - TB_given_VTB_probability[2, 1]
+
+  lungCancer_given_smoke_probability[1, 1] = 1 - sum(hist$LC[smoke_zero]) / length(hist$LC[smoke_zero])
+  lungCancer_given_smoke_probability[1, 2] = 1 - lungCancer_given_smoke_probability[1, 1]
+  lungCancer_given_smoke_probability[2, 1] = 1 - sum(hist$LC[smoke_one]) / length(hist$LC[smoke_one])
+  lungCancer_given_smoke_probability[2, 2] = 1 - lungCancer_given_smoke_probability[2, 1]
+
+  bronchitis_given_smoke_probability[1, 1] = 1 - sum(hist$Br[smoke_zero]) / length(hist$Br[smoke_zero])
+  bronchitis_given_smoke_probability[1, 2] = 1 - bronchitis_given_smoke_probability[1, 1]
+  bronchitis_given_smoke_probability[2, 1] = 1 - sum(hist$Br[smoke_one]) / length(hist$Br[smoke_one])
+  bronchitis_given_smoke_probability[2, 2] = 1 - bronchitis_given_smoke_probability[2, 1]
+
+  dyspnea_given_lungcancer_and_bronchitis_probability[1, 1] = 1 - sum(hist$Dy[bl_zero]) / length(hist$Dy[bl_zero])
+  dyspnea_given_lungcancer_and_bronchitis_probability[1, 2] = 1 - dyspnea_given_lungcancer_and_bronchitis_probability[1, 1]
+  dyspnea_given_lungcancer_and_bronchitis_probability[2, 1] = 1 - sum(hist$Dy[b_one_l_zero]) / length(hist$Dy[b_one_l_zero])
+  dyspnea_given_lungcancer_and_bronchitis_probability[2, 2] = 1 - dyspnea_given_lungcancer_and_bronchitis_probability[2, 1]
+  dyspnea_given_lungcancer_and_bronchitis_probability[3, 1] = 1 - sum(hist$Dy[b_zero_l_one]) / length(hist$Dy[b_zero_l_one])
+  dyspnea_given_lungcancer_and_bronchitis_probability[3, 2] = 1 - dyspnea_given_lungcancer_and_bronchitis_probability[3, 1]
+  dyspnea_given_lungcancer_and_bronchitis_probability[4, 1] = 1 - sum(hist$Dy[bl_one]) / length(hist$Dy[bl_one])
+  dyspnea_given_lungcancer_and_bronchitis_probability[4, 2] = 1 - dyspnea_given_lungcancer_and_bronchitis_probability[4, 1]
+
+  xRay_given_lungcancer_and_tuberculosis_and_pneumonia_probability[1, 1] = 1 - sum(hist$XR[ltp_zero]) / length(hist$XR[ltp_zero])
+  xRay_given_lungcancer_and_tuberculosis_and_pneumonia_probability[1, 2] = 1 - xRay_given_lungcancer_and_tuberculosis_and_pneumonia_probability[1, 1]
+  xRay_given_lungcancer_and_tuberculosis_and_pneumonia_probability[2, 1] = 1 - sum(hist$XR[l_one_tp_zero]) / length(hist$XR[l_one_tp_zero])
+  xRay_given_lungcancer_and_tuberculosis_and_pneumonia_probability[2, 2] = 1 - xRay_given_lungcancer_and_tuberculosis_and_pneumonia_probability[2, 1]
+  xRay_given_lungcancer_and_tuberculosis_and_pneumonia_probability[3, 1] = 1 - sum(hist$XR[lp_zero_t_one]) / length(hist$XR[lp_zero_t_one])
+  xRay_given_lungcancer_and_tuberculosis_and_pneumonia_probability[3, 2] = 1 - xRay_given_lungcancer_and_tuberculosis_and_pneumonia_probability[3, 1]
+  xRay_given_lungcancer_and_tuberculosis_and_pneumonia_probability[4, 1] = 1 - sum(hist$XR[lt_one_p_zero]) / length(hist$XR[lt_one_p_zero])
+  xRay_given_lungcancer_and_tuberculosis_and_pneumonia_probability[4, 2] = 1 - xRay_given_lungcancer_and_tuberculosis_and_pneumonia_probability[4, 1]
+  xRay_given_lungcancer_and_tuberculosis_and_pneumonia_probability[5, 1] = 1 - sum(hist$XR[lt_zero_p_one]) / length(hist$XR[lt_zero_p_one])
+  xRay_given_lungcancer_and_tuberculosis_and_pneumonia_probability[5, 2] = 1 - xRay_given_lungcancer_and_tuberculosis_and_pneumonia_probability[5, 1]
+  xRay_given_lungcancer_and_tuberculosis_and_pneumonia_probability[6, 1] = 1 - sum(hist$XR[lp_one_t_zero]) / length(hist$XR[lp_one_t_zero])
+  xRay_given_lungcancer_and_tuberculosis_and_pneumonia_probability[6, 2] = 1 - xRay_given_lungcancer_and_tuberculosis_and_pneumonia_probability[6, 1]
+  xRay_given_lungcancer_and_tuberculosis_and_pneumonia_probability[7, 1] = 1 - sum(hist$XR[pt_one_l_zero]) / length(hist$XR[pt_one_l_zero])
+  xRay_given_lungcancer_and_tuberculosis_and_pneumonia_probability[7, 2] = 1 - xRay_given_lungcancer_and_tuberculosis_and_pneumonia_probability[7, 1]
+  xRay_given_lungcancer_and_tuberculosis_and_pneumonia_probability[8, 1] = 1 - sum(hist$XR[ltp_one]) / length(hist$XR[ltp_one])
+  xRay_given_lungcancer_and_tuberculosis_and_pneumonia_probability[8, 2] = 1 - xRay_given_lungcancer_and_tuberculosis_and_pneumonia_probability[8, 1]
+
+  return(list(Pn = pneumonia_probability, Br = bronchitis_given_smoke_probability,
+              Dy = dyspnea_given_lungcancer_and_bronchitis_probability, LC = lungCancer_given_smoke_probability,
+              Sm = smoke_probability, VTB = visited_TB_spot_probability, TB = TB_given_VTB_probability,
+              XR = xRay_given_lungcancer_and_tuberculosis_and_pneumonia_probability, Te = temperature_given_pneumonia_probability))
+}
+
+diagnose = function(network, cases){
+  diagnose_results = matrix(0, 10, 4)
+  heads = c("Pn","TB","LC","Br")
+  new_temp = old_temp = 0
+  for (test in 1:10) {
+    holder = data.frame(Pn = rep(0, 1000), Te = rep(0, 1000), VTB = rep(0, 1000),
+                         TB = rep(0, 1000), Sm = rep(0, 1000), LC = rep(0, 1000),
+                         Br = rep(0, 1000), XR = rep(0, 1000), Dy = rep(0, 1000))
+    holder[1, ] = cases[test, ]
+    holder$Pn[1] = holder$TB[1] = holder$LC[1] = holder$Br[1] = sample(0:1, 1)
+
+    for (i in 2:1000) {
+      temp_holder = holder[i - 1, ]
+      for (j in heads) {
+        rand_uni = runif(1)
+        old_temp = network$Pn[temp_holder$Pn+1] * network$Sm[temp_holder$Sm + 1] * network$VTB[temp_holder$VTB + 1]
+        old_temp = old_temp * dnorm(temp_holder$Te,network$Te[temp_holder$Pn + 1, 1], network$Te[temp_holder$Pn + 1, 2])
+        old_temp = old_temp * network$TB[temp_holder$VTB + 1, temp_holder$TB + 1]
+        old_temp = old_temp * network$LC[temp_holder$Sm + 1, temp_holder$LC + 1]
+        old_temp = old_temp * network$Br[temp_holder$Sm + 1, temp_holder$Br + 1]
+        old_temp = old_temp * network$Dy[temp_holder$LC * 2 + temp_holder$Br + 1, temp_holder$Dy + 1]
+        old_temp = old_temp * network$XR[temp_holder$Pn * 4 + temp_holder$TB * 2 + temp_holder$LC + 1, temp_holder$XR + 1]
+
+        if(holder[[j]][i - 1] == 0){
+          temp_holder[[j]] = 1
+        } else {
+          temp_holder[[j]] = 0
+        }
+
+        new_temp = network$Pn[temp_holder$Pn + 1]*network$Sm[temp_holder$Sm + 1]*network$VTB[temp_holder$VTB + 1]
+        new_temp = new_temp * dnorm(temp_holder$Te,network$Te[temp_holder$Pn + 1, 1],network$Te[temp_holder$Pn + 1, 2])
+        new_temp = new_temp * network$TB[temp_holder$VTB + 1, temp_holder$TB + 1]
+        new_temp = new_temp * network$LC[temp_holder$Sm + 1, temp_holder$LC + 1]
+        new_temp = new_temp * network$Br[temp_holder$Sm + 1, temp_holder$Br + 1]
+        new_temp = new_temp * network$Dy[(temp_holder$LC) * 2 + temp_holder$Br + 1, temp_holder$Dy + 1]
+        new_temp = new_temp * network$XR[(temp_holder$Pn) * 4 + (temp_holder$TB) * 2 + temp_holder$LC + 1, temp_holder$XR + 1]
+
+        if(new_temp < old_temp){
+          x = new_temp / old_temp
+          if(rand_uni > x){
+            if(temp_holder[[j]] == 0){
+              temp_holder[[j]] = 1
+            }else{
+              temp_holder[[j]] = 0
+            }
+          }
+        }
+        holder[i, ] = temp_holder
+      }
+    }
+
+    diagnose_results[test, 1] = sum(holder$Pn[101:1000]) / 900
+    diagnose_results[test, 2] = sum(holder$TB[101:1000]) / 900
+    diagnose_results[test, 3] = sum(holder$LC[101:1000]) / 900
+    diagnose_results[test, 4] = sum(holder$Br[101:1000]) / 900
+  }
+  return(diagnose_results)
+}
+#runDiagnostics(learn, diagnose, verbose = 2)
